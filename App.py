@@ -14,7 +14,7 @@ st.markdown("\nWelcome — use the left sidebar to navigate pages.\n")
 # Load data once and store in session_state
 if 'df' not in st.session_state:
     with st.spinner('Loading data...'):
-        st.session_state.df = load_data(r'C:\Users\hites\Desktop\HR -Dashboard\HRDataset_v14.csv') # update path if running locally
+        st.session_state.df = load_data('HRDataset_v14.csv')
         st.success('Data loaded')
 
 st.sidebar.header('Navigation')
