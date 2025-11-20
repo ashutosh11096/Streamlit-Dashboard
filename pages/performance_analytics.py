@@ -3,6 +3,7 @@ import re
 from collections import Counter
 from typing import List, Optional
 
+import importlib.util
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -96,6 +97,11 @@ def normalize_score_series(s: pd.Series) -> pd.Series:
         return pd.Series(np.nan, index=s.index, dtype='float64')
 
 
+def _statsmodels_available() -> bool:
+    """Return True if statsmodels is importable in this environment."""
+    return importlib.util.find_spec("statsmodels") is not None
+
+
 def run(df: pd.DataFrame):
     st.header('Performance Analytics')
 
@@ -147,24 +153,12 @@ def run(df: pd.DataFrame):
             )
             st.subheader('Avg Performance by Department')
             fig = px.bar(perf_dept, x=dept_col, y=score_col, title='Avg Performance by Dept')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch", key="perf_dept_bar")
         else:
             st.subheader('Performance counts by Department')
             perf_dept_counts = df.groupby(dept_col)[score_col].value_counts().unstack(fill_value=0)
             st.dataframe(perf_dept_counts)
 
-    # Salary vs Performance scatter (only if numeric scores exist)
-    if 'Salary' in df.columns and df['_normalized_score'].notna().sum() > 0:
-        st.subheader('Salary vs Performance')
-        tmp = df[[ '_normalized_score', 'Salary']].dropna()
-        # try to coerce salary to numeric for plotting
-        tmp['Salary'] = pd.to_numeric(tmp['Salary'], errors='coerce')
-        tmp = tmp.dropna()
-        if not tmp.empty:
-            fig = px.scatter(tmp, x='Salary', y='_normalized_score', trendline='ols', title='Salary vs Performance')
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.write('Salary data not numeric or missing for plotting.')
 
     # Top/Bottom performers
     st.subheader('Top & Bottom Performers')

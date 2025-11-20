@@ -17,19 +17,7 @@ def run(df: pd.DataFrame):
     col2.metric('Active Employees', active)
     col3.metric('Terminated Employees', terminated)
 
-    # Age and tenure
-    with st.expander('Age & Tenure'):
-        if 'DOB' in df.columns:
-            ages = (pd.Timestamp('today') - df['DOB']).dt.days // 365
-            st.write('Average age:', int(ages.mean()))
-            fig_age = px.histogram(ages.dropna(), nbins=20, title='Age Distribution')
-            st.plotly_chart(fig_age, use_container_width=True)
-        t = tenure_days(df)
-        if t is not None:
-            st.write('Average tenure (years):', round(t.mean() / 365, 2))
-            fig_t = px.histogram(t.dropna() / 365, nbins=20, title='Tenure (years)')
-            st.plotly_chart(fig_t, use_container_width=True)
-
+   
     st.write('---')
 
     # Demographics

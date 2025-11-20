@@ -32,11 +32,4 @@ def run(df: pd.DataFrame):
         fig2 = px.bar(avg_dept, x=dept_col, y='Salary', title='Avg Salary by Dept')
         st.plotly_chart(fig2, use_container_width=True)
 
-    st.write('---')
-    st.subheader('Gender pay gap')
-    if 'Gender' in df.columns and 'Salary' in df_salary.columns:
-        gap = df_salary.groupby('Gender')['Salary'].agg(['mean','median','count']).reset_index()
-        st.dataframe(gap)
-        fig3 = px.box(df_salary, x='Gender', y='Salary', title='Salary by Gender')
-        st.plotly_chart(fig3, use_container_width=True)
 
