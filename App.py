@@ -1,4 +1,180 @@
-# pages/performance_analytics.py
+You've asked for the full code, likely referring to the complete set of files needed for your Streamlit HR Dashboard, including the necessary fixes.
+
+I will provide the corrected code for the three main files: **`App.py`**, **`utils.py`** (with the critical pathing fix), and **`pages/performance_analytics.py`**.
+
+-----
+
+## 1\. `requirements.txt`
+
+This file ensures Streamlit Community Cloud installs all the necessary packages.
+
+```text
+streamlit
+pandas
+numpy
+plotly
+openpyxl  # Often required by pandas for certain file types, good to include
+```
+
+-----
+
+## 2\. `App.py` (Main Application Script)
+
+This file sets up the page configuration, loads the data, and handles navigation between your pages.
+
+```python
+import os, sys
+# ensure local package folder is preferred (avoids name collision with installed `utils` package)
+# This helps Python find your local 'utils.py'
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+import streamlit as st
+from utils import load_data
+
+st.set_page_config(page_title='HR Dashboard', layout='wide')
+st.title('HR Dashboard')
+
+st.markdown("\nWelcome — use the left sidebar to navigate pages.\n")
+
+# Load data once and store in session_state
+if 'df' not in st.session_state:
+    # IMPORTANT: Pass the filename here. The logic to find the full path is now inside load_data.
+    with st.spinner('Loading data...'):
+        st.session_state.df = load_data('HRDataset_v14.csv')
+        st.success('Data loaded')
+
+st.sidebar.header('Navigation')
+page = st.sidebar.radio('Go to', [
+    'Employee Overview',
+    'Performance Analytics',
+    'Salary Analytics'
+])
+
+# Import pages lazily based on selection
+if page == 'Employee Overview':
+    import pages.employee_overview as page_mod
+elif page == 'Performance Analytics':
+    import pages.performance_analytics as page_mod
+elif page == 'Salary Analytics':
+    import pages.salary_analytics as page_mod
+
+# Run the selected page module
+page_mod.run(st.session_state.df)
+```
+
+-----
+
+## 3\. `utils.py` (Utilities with File Path Fix)
+
+This file contains the data loading logic, including the **critical fix** to ensure `HRDataset_v14.csv` is found in the cloud environment using `os.path`.
+
+```python
+import os # 👈 NEW IMPORT
+import pandas as pd
+import numpy as np
+from typing import Optional, List
+
+# Common date column names you might have in your HR dataset.
+DEFAULT_DATE_COLS = [
+    'DOB', 'DateofJoining', 'DateOfJoining', 'DOJ',
+    'DateofTermination', 'DateOfTermination', 'TerminationDate'
+]
+
+def ensure_datetime(df: pd.DataFrame, cols: Optional[List[str]] = None) -> pd.DataFrame:
+    """
+    Convert specified columns in df to datetime where possible.
+    If cols is None, tries DEFAULT_DATE_COLS that exist in df.
+    Returns the same dataframe (modified in-place).
+    """
+    if cols is None:
+        cols = [c for c in DEFAULT_DATE_COLS if c in df.columns]
+    # only convert columns that actually exist in df
+    cols = [c for c in cols if c in df.columns]
+    for c in cols:
+        # coerce errors to NaT
+        df[c] = pd.to_datetime(df[c], errors='coerce')
+    return df
+
+def tenure_days(df: pd.DataFrame,
+                join_col_candidates: Optional[List[str]] = None,
+                term_col_candidates: Optional[List[str]] = None) -> pd.Series:
+    """
+    Vectorized computation of tenure in days.
+    Returns a pd.Series of dtype float64 with np.nan for missing values.
+    - df: DataFrame
+    - join_col_candidates: list of possible join date column names (defaults used if None)
+    - term_col_candidates: list of possible termination date column names (defaults used if None)
+    """
+    if join_col_candidates is None:
+        join_col_candidates = ['DateofJoining', 'DateOfJoining', 'DOJ', 'JoinDate', 'JoiningDate']
+    if term_col_candidates is None:
+        term_col_candidates = ['DateofTermination', 'DateOfTermination', 'TerminationDate', 'LeaveDate']
+
+    # pick first candidate that exists in df
+    join_col = next((c for c in join_col_candidates if c in df.columns), None)
+    term_col = next((c for c in term_col_candidates if c in df.columns), None)
+
+    if join_col is None:
+        # Return a float Series of NaNs (length matches df)
+        return pd.Series(np.nan, index=df.index, dtype='float64')
+
+    # Ensure datetime for the relevant columns
+    cols_to_convert = [join_col]
+    if term_col:
+        cols_to_convert.append(term_col)
+    ensure_datetime(df, cols_to_convert)
+
+    today = pd.Timestamp.today().normalize()
+
+    jd = pd.to_datetime(df[join_col], errors='coerce')  # Timestamps or NaT
+    if term_col and term_col in df.columns:
+        ld = pd.to_datetime(df[term_col], errors='coerce')
+    else:
+        # create a Series filled with NaT so we can fill with today
+        ld = pd.Series(pd.NaT, index=df.index)
+
+    # For rows with no termination date, use today
+    ld_filled = ld.fillna(today)
+
+    # Compute difference in days (will be float after astype)
+    diff = (ld_filled - jd).dt.days.astype('float64')  # NaN where jd is NaT
+
+    # Set negative diffs (bad data) to NaN (change to 0.0 if you prefer)
+    diff[diff < 0] = np.nan
+
+    return diff
+
+def load_data(filename: str, parse_dates: Optional[List[str]] = None) -> pd.DataFrame:
+    """
+    Basic data loader for CSVs. Returns dataframe with common date columns parsed.
+    - filename: Name of the csv file (e.g., 'HRDataset_v14.csv')
+    - parse_dates: optional list of columns to parse as dates
+    """
+    # 💡 FIX: Use the absolute path relative to the location of this script (utils.py)
+    # 1. Get the directory where utils.py is located
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 2. Construct the full path using the directory and the filename argument
+    full_path = os.path.join(current_dir, filename) 
+    
+    # Use the calculated full_path for robust file access
+    df = pd.read_csv(full_path) 
+    
+    # If user provided parse_dates, use them; otherwise try defaults
+    to_parse = parse_dates if parse_dates is not None else [c for c in DEFAULT_DATE_COLS if c in df.columns]
+    if to_parse:
+        ensure_datetime(df, to_parse)
+        
+    return df
+```
+
+-----
+
+## 4\. `pages/performance_analytics.py`
+
+This file is a page module and requires no changes, but is included for completeness. **You will also need to ensure your `pages/employee_overview.py` and `pages/salary_analytics.py` files exist.**
+
+```python
 import re
 from collections import Counter
 from typing import List, Optional
@@ -120,13 +296,21 @@ def run(df: pd.DataFrame):
 
     # basic KPIs
     st.subheader('KPIs')
+    
+    # Use columns for cleaner display
+    col1, col2, col3 = st.columns(3)
+
     if df['_normalized_score'].notna().sum() > 0:
         avg = df['_normalized_score'].mean()
         mx = df['_normalized_score'].max()
         mn = df['_normalized_score'].min()
-        st.metric('Avg Score', round(avg, 2))
-        st.metric('Max Score', float(mx) if pd.notna(mx) else '—')
-        st.metric('Min Score', float(mn) if pd.notna(mn) else '—')
+        
+        with col1:
+            st.metric('Avg Score', round(avg, 2))
+        with col2:
+            st.metric('Max Score', float(mx) if pd.notna(mx) else '—')
+        with col3:
+            st.metric('Min Score', float(mn) if pd.notna(mn) else '—')
     else:
         st.info('No numeric performance scores could be derived from the selected score column.')
         st.write('Unique raw values (sample):')
@@ -140,10 +324,10 @@ def run(df: pd.DataFrame):
         if df['_normalized_score'].notna().sum() > 0:
             perf_dept = (
                 df.groupby(dept_col)['_normalized_score']
-                  .mean()
-                  .reset_index()
-                  .rename(columns={'_normalized_score': score_col})
-                  .sort_values(score_col, ascending=False)
+                    .mean()
+                    .reset_index()
+                    .rename(columns={'_normalized_score': score_col})
+                    .sort_values(score_col, ascending=False)
             )
             st.subheader('Avg Performance by Department')
             fig = px.bar(perf_dept, x=dept_col, y=score_col, title='Avg Performance by Dept')
@@ -200,3 +384,4 @@ def run(df: pd.DataFrame):
     if '_normalized_score' in df.columns:
         # nothing to do since df was a copy, but if you reused original, consider dropping
         pass
+```
